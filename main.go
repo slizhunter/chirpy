@@ -11,6 +11,8 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 }
 
+const maxChirpLength = 140
+
 func main() {
 	const filePathRoot = "."
 	const port = "8080"
@@ -22,9 +24,10 @@ func main() {
 	mux := http.NewServeMux() // Set up the file server handler with the middleware to count hits
 	fileserverHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filePathRoot)))
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(fileserverHandler))
-	mux.HandleFunc("/metrics", apiCfg.handlerMetrics)
-	mux.HandleFunc("/reset", apiCfg.handlerReset)
-	mux.HandleFunc("/healthz", handlerReadiness)
+	mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
+	mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
+	mux.HandleFunc("GET /api/healthz", handlerReadiness)
+	mux.HandleFunc("POST /api/validate_chirp", handlerValidate)
 
 	// Start the HTTP server
 	newServer := http.Server{
@@ -48,9 +51,15 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 
 // writeMetrics writes the current value of the fileserverHits counter to the HTTP response.
 func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, r *http.Request) {
-	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Add("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(fmt.Sprintf("Hits: %d", cfg.fileserverHits.Load())))
+	w.Write([]byte(fmt.Sprintf(
+		`<html>
+	<body>
+	    <h1>Welcome, Chirpy Admin</h1>
+		<p>Chirpy has been visited %d times!</p>
+	</body>
+</html>`, cfg.fileserverHits.Load())))
 }
 
 // handlerReadiness responds with an HTTP 200 OK status and a plain text message indicating that the server is ready to handle requests.
