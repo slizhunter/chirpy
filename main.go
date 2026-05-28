@@ -1,14 +1,21 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync/atomic"
+
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
+	"github.com/slizhunter/chirpy/internal/database"
 )
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	dbQueries      *database.Queries
 }
 
 const maxChirpLength = 140
@@ -17,9 +24,19 @@ func main() {
 	const filePathRoot = "."
 	const port = "8080"
 
+	godotenv.Load() // Load environment variables from .env file
+	dbURL := os.Getenv("DB_URL")
+	db, err := sql.Open("postgres", dbURL)
+	dbQueries := database.New(db)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer db.Close()
+
 	// Initialize the API configuration and set up the HTTP server
 	apiCfg := apiConfig{
 		fileserverHits: atomic.Int32{},
+		dbQueries:      dbQueries,
 	}
 	mux := http.NewServeMux() // Set up the file server handler with the middleware to count hits
 	fileserverHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filePathRoot)))
