@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"os"
 	"sync/atomic"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"github.com/slizhunter/chirpy/internal/database"
@@ -16,6 +18,14 @@ import (
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	dbQueries      *database.Queries
+	platform       string
+}
+
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
 }
 
 const maxChirpLength = 140
@@ -27,17 +37,24 @@ func main() {
 	godotenv.Load() // Load environment variables from .env file
 	dbURL := os.Getenv("DB_URL")
 	db, err := sql.Open("postgres", dbURL)
-	dbQueries := database.New(db)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()
+	dbQueries := database.New(db)
+
+	platform := os.Getenv("PLATFORM")
+	if platform == "" {
+		log.Fatalf("PLATFORM environment variable is not set")
+	}
 
 	// Initialize the API configuration and set up the HTTP server
 	apiCfg := apiConfig{
 		fileserverHits: atomic.Int32{},
 		dbQueries:      dbQueries,
+		platform:       platform,
 	}
+
 	mux := http.NewServeMux() // Set up the file server handler with the middleware to count hits
 	fileserverHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filePathRoot)))
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(fileserverHandler))
@@ -45,6 +62,7 @@ func main() {
 	mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
 	mux.HandleFunc("GET /api/healthz", handlerReadiness)
 	mux.HandleFunc("POST /api/validate_chirp", handlerValidate)
+	mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
 
 	// Start the HTTP server
 	newServer := http.Server{
