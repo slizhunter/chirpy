@@ -70,14 +70,19 @@ func main() {
 	mux := http.NewServeMux() // Set up the file server handler with the middleware to count hits
 	fileserverHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filePathRoot)))
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(fileserverHandler))
+	// Admin features
 	mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
 	mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
+	// Viewing features
 	mux.HandleFunc("GET /api/healthz", handlerReadiness)
 	mux.HandleFunc("GET /api/chirps", apiCfg.handlerGetChirps)
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.handlerGetChirp)
+	// User features
 	mux.HandleFunc("POST /api/chirps", apiCfg.handlerPostChirp)
 	mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
 	mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
+	mux.HandleFunc("PUT /api/users", apiCfg.handlerUpdateUser)
+	// Token management features
 	mux.HandleFunc("POST /api/refresh", apiCfg.handleRefresh)
 	mux.HandleFunc("POST /api/revoke", apiCfg.handleRevoke)
 

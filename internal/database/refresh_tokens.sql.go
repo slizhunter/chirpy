@@ -68,6 +68,7 @@ SET revoked_at = NOW(), updated_at = NOW()
 WHERE token = $1
 `
 
+// description: Revoke a refresh token by setting its revoked_at timestamp
 func (q *Queries) RevokeRefreshToken(ctx context.Context, token string) error {
 	_, err := q.db.ExecContext(ctx, revokeRefreshToken, token)
 	return err
