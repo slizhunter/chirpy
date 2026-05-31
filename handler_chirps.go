@@ -16,28 +16,11 @@ var badWords = map[string]struct{}{
 	"fornax":    {},
 }
 
-// handlerPostChirp handles the creation of a new chirp. It expects a JSON body with the chirp content,
-// the user ID, and a JWT for authentication. It returns the created chirp in the response.
+// handlerPostChirp handles the creation of a new chirp. It expects a JSON body with the chirp content.
+// The authenticated user ID is extracted from the JWT in the Authorization header. It returns the created chirp in the response.
 func (cfg *apiConfig) handlerPostChirp(w http.ResponseWriter, r *http.Request) {
 	type requestBody struct {
-		Body   string    `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
-		JWT    string    `json:"jwt"`
-	}
-	type response struct {
-		Chirp
-	}
-	var reqBody requestBody
-	// Decode the JSON body into the requestBody struct
-	err := json.NewDecoder(r.Body).Decode(&reqBody)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid JSON body", err)
-		return
-	}
-	// Check chirp length
-	if len(reqBody.Body) > maxChirpLength {
-		respondWithError(w, http.StatusBadRequest, "Chirp is too long", nil)
-		return
+		Body string `json:"body"`
 	}
 	// Extract and validate the Bearer token from the Authorization header
 	token, err := auth.GetBearerToken(r.Header)
@@ -49,6 +32,18 @@ func (cfg *apiConfig) handlerPostChirp(w http.ResponseWriter, r *http.Request) {
 	authenticatedUserID, err := auth.ValidateJWT(token, cfg.secret)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Invalid or expired JWT", err)
+		return
+	}
+	var reqBody requestBody
+	// Decode the JSON body into the requestBody struct
+	err = json.NewDecoder(r.Body).Decode(&reqBody)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid JSON body", err)
+		return
+	}
+	// Check chirp length
+	if len(reqBody.Body) > maxChirpLength {
+		respondWithError(w, http.StatusBadRequest, "Chirp is too long", nil)
 		return
 	}
 	// Filter out any profane words from the chirp body
@@ -63,21 +58,16 @@ func (cfg *apiConfig) handlerPostChirp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondWithJSON(w, http.StatusCreated, response{
-		Chirp: Chirp{
-			ID:        chirp.ID,
-			CreatedAt: chirp.CreatedAt,
-			UpdatedAt: chirp.UpdatedAt,
-			Body:      chirp.Body,
-			UserID:    chirp.UserID,
-		},
+	respondWithJSON(w, http.StatusCreated, Chirp{
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
 	})
 }
 
 func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
-	type response struct {
-		Chirp
-	}
 	dbChirps, err := cfg.dbQueries.GetChirps(r.Context())
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to get chirps", err)
