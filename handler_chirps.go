@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/slizhunter/chirpy/internal/auth"
 	"github.com/slizhunter/chirpy/internal/database"
 )
 
@@ -15,28 +16,47 @@ var badWords = map[string]struct{}{
 	"fornax":    {},
 }
 
+// handlerPostChirp handles the creation of a new chirp. It expects a JSON body with the chirp content,
+// the user ID, and a JWT for authentication. It returns the created chirp in the response.
 func (cfg *apiConfig) handlerPostChirp(w http.ResponseWriter, r *http.Request) {
 	type requestBody struct {
 		Body   string    `json:"body"`
 		UserID uuid.UUID `json:"user_id"`
+		JWT    string    `json:"jwt"`
 	}
 	type response struct {
 		Chirp
 	}
 	var reqBody requestBody
+	// Decode the JSON body into the requestBody struct
 	err := json.NewDecoder(r.Body).Decode(&reqBody)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid JSON body", err)
 		return
 	}
+	// Check chirp length
 	if len(reqBody.Body) > maxChirpLength {
 		respondWithError(w, http.StatusBadRequest, "Chirp is too long", nil)
 		return
 	}
+	// Extract and validate the Bearer token from the Authorization header
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Invalid or missing Bearer token", err)
+		return
+	}
+	// Validate the JWT and extract the authenticated user ID
+	authenticatedUserID, err := auth.ValidateJWT(token, cfg.secret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Invalid or expired JWT", err)
+		return
+	}
+	// Filter out any profane words from the chirp body
 	cleanBody := profanityFilter(reqBody.Body)
+	// Create the chirp in the database
 	chirp, err := cfg.dbQueries.CreateChirp(r.Context(), database.CreateChirpParams{
 		Body:   cleanBody,
-		UserID: reqBody.UserID,
+		UserID: authenticatedUserID, // Use the authenticated user ID from the JWT
 	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to create chirp", err)
