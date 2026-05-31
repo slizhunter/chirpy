@@ -6,13 +6,26 @@ import (
 	"time"
 
 	"github.com/slizhunter/chirpy/internal/auth"
+	"github.com/slizhunter/chirpy/internal/database"
 )
 
+// expirationDays defines the number of days after which the refresh token expires.
+const expirationDays = 60 * 24 * time.Hour // 60 days
+
+// accessTokenExpiration defines the duration after which the access token expires.
+const accessTokenExpiration = time.Hour
+
+// handlerLogin handles user login requests. It expects a JSON body with email and password, validates the credentials,
+// and responds with a JSON object containing the user information, JWT token, and refresh token.
 func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	type params struct {
-		Email            string         `json:"email"`
-		Password         string         `json:"password"`
-		ExpiresInSeconds *time.Duration `json:"expires_in_seconds"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	type response struct {
+		User
+		Token        string `json:"token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 	var reqBody params
 	err := json.NewDecoder(r.Body).Decode(&reqBody)
@@ -25,27 +38,37 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Gets the user from the database by email
 	dbUser, err := cfg.dbQueries.GetUserByEmail(r.Context(), reqBody.Email)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to get user", err)
 		return
 	}
 
+	// Check the password hash
 	match, err := auth.CheckPasswordHash(reqBody.Password, dbUser.HashedPassword)
 	if err != nil || !match {
 		respondWithError(w, http.StatusUnauthorized, "Invalid email or password", nil)
 		return
 	}
 
-	expiresIn := time.Hour // Default to 1 hour
-	if reqBody.ExpiresInSeconds != nil &&
-		*reqBody.ExpiresInSeconds > 0 &&
-		*reqBody.ExpiresInSeconds < time.Hour {
-		expiresIn = *reqBody.ExpiresInSeconds
-	}
+	// Generate JWT token
+	expiresIn := accessTokenExpiration
 	token, err := auth.MakeJWT(dbUser.ID, cfg.secret, expiresIn)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to generate JWT", err)
+		return
+	}
+	// Generate refresh token
+	refreshTokenNum := auth.MakeRefreshToken()
+	// Store the refresh token in the database
+	refreshToken, err := cfg.dbQueries.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
+		Token:     refreshTokenNum,
+		UserID:    dbUser.ID,
+		ExpiresAt: time.Now().Add(expirationDays),
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to create refresh token", err)
 		return
 	}
 
@@ -56,5 +79,9 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		Email:     dbUser.Email,
 		Token:     token,
 	}
-	respondWithJSON(w, http.StatusOK, user)
+	respondWithJSON(w, http.StatusOK, response{
+		User:         user,
+		Token:        token,
+		RefreshToken: refreshToken.Token,
+	})
 }

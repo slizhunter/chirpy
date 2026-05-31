@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"time"
@@ -50,6 +52,12 @@ func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (str
 		Subject:   userID.String(),
 	})
 	return token.SignedString([]byte(tokenSecret))
+}
+
+func MakeRefreshToken() string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 // ValidateJWT validates the given JWT token string using the specified secret.
