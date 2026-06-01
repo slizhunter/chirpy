@@ -100,3 +100,16 @@ func GetBearerToken(headers http.Header) (string, error) {
 	}
 	return authHeader[len(prefix):], nil
 }
+
+func GetAPIKey(headers http.Header) (string, error) {
+	authHeader := headers.Get("Authorization")
+	if authHeader == "" {
+		return "", fmt.Errorf("authorization header missing")
+	}
+	const prefix = "ApiKey "
+	if len(authHeader) <= len(prefix) || authHeader[:len(prefix)] != prefix {
+		return "", fmt.Errorf("invalid authorization header format")
+	}
+	apiKey := authHeader[len(prefix):]
+	return apiKey, nil
+}

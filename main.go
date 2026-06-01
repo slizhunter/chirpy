@@ -20,6 +20,7 @@ type apiConfig struct {
 	dbQueries      *database.Queries
 	platform       string
 	secret         string
+	polkaKey       string
 }
 
 type User struct {
@@ -66,6 +67,7 @@ func main() {
 		dbQueries:      dbQueries,
 		platform:       platform,
 		secret:         os.Getenv("secret"),
+		polkaKey:       os.Getenv("POLKA_KEY"),
 	}
 
 	mux := http.NewServeMux() // Set up the file server handler with the middleware to count hits
