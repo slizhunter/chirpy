@@ -21,10 +21,10 @@ func respondWithError(w http.ResponseWriter, code int, msg string, err error) {
 	type errorResponse struct {
 		Error string `json:"error"`
 	}
+	if err != nil {
+		log.Printf("Error: %v", err)
+	}
 	if code >= 500 {
-		if err != nil {
-			log.Printf("Error: %v", err)
-		}
 		log.Printf("Internal Server Error: %s", msg)
 	}
 	respondWithJSON(w, code, errorResponse{Error: msg})
