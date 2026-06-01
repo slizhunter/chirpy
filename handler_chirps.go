@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -69,8 +70,25 @@ func (cfg *apiConfig) handlerPostChirp(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handlerGetChirps handles the retrieval of chirps.
+// It supports an optional "author_id" query parameter to filter chirps by author.
+// If "author_id" is not provided, it returns all chirps.
+// Example: GET /api/chirps?author_id=<author_id>
 func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
-	dbChirps, err := cfg.dbQueries.GetChirps(r.Context())
+	// Get the "author_id" query parameter from the URL
+	authorIDStr := r.URL.Query().Get("author_id")
+	var dbChirps []database.Chirp
+	var err error
+	if authorIDStr != "" {
+		authorID, parseErr := uuid.Parse(authorIDStr)
+		if parseErr != nil {
+			respondWithError(w, http.StatusBadRequest, "Invalid author ID", parseErr)
+			return
+		}
+		dbChirps, err = cfg.dbQueries.GetChirpsByAuthor(r.Context(), authorID)
+	} else {
+		dbChirps, err = cfg.dbQueries.GetChirps(r.Context())
+	}
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to get chirps", err)
 		return
@@ -83,6 +101,20 @@ func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 			UpdatedAt: c.UpdatedAt,
 			Body:      c.Body,
 			UserID:    c.UserID,
+		})
+	}
+	sortOrder := r.URL.Query().Get("sort")
+	if sortOrder == "" {
+		sortOrder = "asc"
+	}
+	switch sortOrder {
+	case "asc":
+		sort.Slice(chirps, func(i, j int) bool {
+			return chirps[i].CreatedAt.Before(chirps[j].CreatedAt)
+		})
+	case "desc":
+		sort.Slice(chirps, func(i, j int) bool {
+			return chirps[i].CreatedAt.After(chirps[j].CreatedAt)
 		})
 	}
 	respondWithJSON(w, http.StatusOK, chirps)
