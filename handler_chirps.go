@@ -1,7 +1,9 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 
@@ -95,6 +97,9 @@ func (cfg *apiConfig) handlerGetChirp(w http.ResponseWriter, r *http.Request) {
 	}
 	chirp, err := cfg.dbQueries.GetChirp(r.Context(), chirpID)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("Trace: chirp not found for GET /api/chirps/{chirpID} (chirp_id=%q)", chirpID)
+		}
 		respondWithError(w, http.StatusNotFound, "Failed to get chirp", err)
 		return
 	}
@@ -106,6 +111,48 @@ func (cfg *apiConfig) handlerGetChirp(w http.ResponseWriter, r *http.Request) {
 		Body:      chirp.Body,
 		UserID:    chirp.UserID,
 	})
+}
+
+func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, r *http.Request) {
+	// Extract and validate the Bearer token from the Authorization header
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Invalid or missing Bearer token", err)
+		return
+	}
+	// Validate the JWT and extract the authenticated user ID
+	authenticatedUserID, err := auth.ValidateJWT(token, cfg.secret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Invalid or expired JWT", err)
+		return
+	}
+	// Extract the chirp ID from the URL path
+	chirpID, err := uuid.Parse(r.PathValue("chirpID"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid chirp ID", err)
+		return
+	}
+	// Retrieve the chirp from the database to check ownership before deletion
+	chirp, err := cfg.dbQueries.GetChirp(r.Context(), chirpID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("Trace: chirp not found for DELETE /api/chirps/{chirpID} (chirp_id=%q)", chirpID)
+		}
+		respondWithError(w, http.StatusNotFound, "Chirp not found", err)
+		return
+	}
+	// Check if the authenticated user is the owner of the chirp
+	if chirp.UserID != authenticatedUserID {
+		respondWithError(w, http.StatusForbidden, "You are not allowed to delete this chirp", nil)
+		return
+	}
+	// Delete the chirp from the database
+	err = cfg.dbQueries.DeleteChirp(r.Context(), chirpID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to delete chirp", err)
+		return
+	}
+	respondWithJSON(w, http.StatusNoContent, nil)
 }
 
 func profanityFilter(text string) string {

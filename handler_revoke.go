@@ -1,6 +1,8 @@
 package main
 
 import (
+	"database/sql"
+	"log"
 	"net/http"
 
 	"github.com/slizhunter/chirpy/internal/auth"
@@ -16,6 +18,9 @@ func (cfg *apiConfig) handleRevoke(w http.ResponseWriter, r *http.Request) {
 	// Get the refresh token from the database
 	dbRefreshToken, err := cfg.dbQueries.GetRefreshToken(r.Context(), refreshToken)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("Trace: no refresh token row for /api/revoke (token_prefix=%q)", tokenPrefix(refreshToken))
+		}
 		respondWithError(w, http.StatusUnauthorized, "Invalid refresh token", err)
 		return
 	}
